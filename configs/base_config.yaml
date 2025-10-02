@@ -1,0 +1,62 @@
+# Kalimax Base Configuration
+
+# Model settings
+model:
+  name: "facebook/nllb-200-distilled-600M"
+  cache_dir: "./models/cache"
+  device: "auto"  # auto, cpu, cuda
+  max_memory_gb: 16
+
+# LoRA settings
+lora:
+  r: 8
+  lora_alpha: 32
+  target_modules: ["q_proj", "v_proj", "k_proj", "out_proj"]
+  lora_dropout: 0.05
+  bias: "none"
+  task_type: "SEQ_2_SEQ_LM"
+
+# Training settings
+training:
+  batch_size: 4
+  gradient_accumulation_steps: 4
+  learning_rate: 5e-5
+  num_epochs: 3
+  warmup_steps: 100
+  save_steps: 500
+  eval_steps: 500
+  logging_steps: 100
+  output_dir: "./outputs"
+  
+# Data settings
+data:
+  raw_dir: "./data/raw"
+  processed_dir: "./data/processed"
+  hiccup_corpus_dir: "./data/hiccup_corpus"
+  max_length: 512
+  test_size: 0.1
+  val_size: 0.1
+
+# Language codes (NLLB format)
+languages:
+  english: "eng_Latn"
+  haitian_creole: "hat_Latn"
+
+# Evaluation settings
+evaluation:
+  metrics: ["bleu", "chrf", "ter"]
+  human_eval_batch_size: 50
+  cultural_adequacy_threshold: 0.9
+
+# API settings
+api:
+  host: "0.0.0.0"
+  port: 8000
+  max_requests_per_minute: 60
+  max_text_length: 1000
+
+# Logging
+logging:
+  level: "INFO"
+  format: "{time} | {level} | {message}"
+  file: "./logs/kalimax.log"
