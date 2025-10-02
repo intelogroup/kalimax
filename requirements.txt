@@ -7,7 +7,7 @@ accelerate>=0.21.0
 
 # Parameter-Efficient Fine-Tuning
 peft>=0.4.0
-bitsandbytes>=0.41.0
+bitsandbytes>=0.41.0; platform_system == "Linux"  # CUDA required, use CPU fallback on Windows
 
 # Evaluation Metrics
 sacrebleu>=2.3.1
@@ -49,8 +49,8 @@ jupyter>=1.0.0
 ipywidgets>=8.0.0
 notebook>=7.0.0
 
-# GPU Memory Optimization
-flash-attn>=2.0.0; platform_system != "Darwin"
+# GPU Memory Optimization (Linux + CUDA only)
+flash-attn>=2.0.0; platform_system == "Linux"
 
 # Cloud Storage and APIs (optional)
 google-cloud-storage>=2.10.0

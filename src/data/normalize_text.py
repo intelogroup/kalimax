@@ -38,22 +38,14 @@ class TextNormalizer:
             self._load_normalization_rules()
         
         # Common Haitian Creole orthography variants
+        # Note: These are applied with word-boundary awareness
         self.orthography_map = {
-            # Contractions
-            "m'": "mwen ",
+            # Contractions (applied carefully to avoid mid-word matches)
             "m'gen": "mwen gen",
             "mgen": "mwen gen",
-            "w'": "ou ",
-            "l'": "li ",
-            
-            # Common abbreviations
-            "gen": "genyen",
-            "pa": "pap",
             
             # Spelling variants
-            "get": "gèt",
             "femal": "fè mal",
-            "tèt fè mal": "tèt fè mal",
         }
     
     def _load_normalization_rules(self):
@@ -89,18 +81,23 @@ class TextNormalizer:
     
     def normalize_punctuation(self, text: str) -> str:
         """Normalize punctuation and quotes"""
-        # Replace various quotes with standard ones
-        text = text.replace('"', '"').replace('"', '"')
-        text = text.replace(''', "'").replace(''', "'")
+        # Replace curly quotes with straight quotes
+        text = text.replace('"', '"').replace('"', '"')  # Curly double quotes
+        text = text.replace(''', "'").replace(''', "'")  # Curly single quotes
+        text = text.replace('„', '"').replace('‟', '"')  # German-style quotes
+        text = text.replace('‹', "'").replace('›', "'")  # Angle quotes
         
-        # Replace various dashes
-        text = text.replace('–', '-').replace('—', '-')
+        # Replace various dashes with standard hyphen-minus
+        text = text.replace('–', '-').replace('—', '-')  # En/em dash
+        text = text.replace('−', '-')  # Minus sign
         
         # Normalize ellipsis
         text = re.sub(r'\.\.\.+', '...', text)
+        text = text.replace('…', '...')  # Horizontal ellipsis character
         
-        # Remove zero-width characters
-        text = text.replace('\u200b', '').replace('\ufeff', '')
+        # Remove zero-width and control characters
+        text = text.replace('\u200b', '').replace('\ufeff', '')  # Zero-width space, BOM
+        text = text.replace('\u200c', '').replace('\u200d', '')  # Zero-width non-joiner/joiner
         
         return text
     
@@ -131,32 +128,46 @@ class TextNormalizer:
         """
         expanded = text
         
-        # Apply orthography map
+        # Apply orthography map with word-boundary awareness
         for variant, canonical in self.orthography_map.items():
-            if variant in expanded.lower():
+            # Use word boundaries to avoid mid-word matches
+            pattern = r'\b' + re.escape(variant) + r'\b'
+            if re.search(pattern, expanded, re.IGNORECASE):
                 if keep_original and variant != canonical:
                     expanded = re.sub(
-                        re.escape(variant), 
+                        pattern,
                         f"{canonical} ({variant})", 
                         expanded, 
                         flags=re.IGNORECASE
                     )
                 else:
                     expanded = re.sub(
-                        re.escape(variant), 
+                        pattern,
                         canonical, 
                         expanded, 
                         flags=re.IGNORECASE
                     )
         
-        # Apply database rules
+        # Handle apostrophe contractions (m', w', l') at word boundaries
+        # These are common in Haitian Creole
+        expanded = re.sub(r"\bm'\s*", "mwen ", expanded, flags=re.IGNORECASE)
+        expanded = re.sub(r"\bw'\s*", "ou ", expanded, flags=re.IGNORECASE)
+        expanded = re.sub(r"\bl'\s*", "li ", expanded, flags=re.IGNORECASE)
+        
+        # Apply database rules word-by-word
         words = expanded.split()
         normalized_words = []
         
         for word in words:
-            lower_word = word.lower()
+            # Strip punctuation for lookup, but preserve it
+            clean_word = word.strip('.,!?;:\'"')
+            lower_word = clean_word.lower()
+            
             if lower_word in self.normalization_cache:
-                normalized_words.append(self.normalization_cache[lower_word])
+                # Replace the word but keep any trailing punctuation
+                prefix = word[:len(word) - len(word.lstrip('.,!?;:\'"'))]
+                suffix = word[len(clean_word) + len(prefix):]
+                normalized_words.append(prefix + self.normalization_cache[lower_word] + suffix)
             else:
                 normalized_words.append(word)
         
