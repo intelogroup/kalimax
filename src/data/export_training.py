@@ -367,6 +367,69 @@ class TrainingExporter:
         print(f"✅ Exported {count} expression rows to {output_file}")
         return count
     
+    def export_profanity(self, output_path: str = "data/profanity_export.jsonl") -> int:
+        """Export profanity table for safety training"""
+        project_root = Path(__file__).parent.parent.parent
+        output_file = project_root / output_path
+        
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT * FROM profanity WHERE should_flag = 1")
+        
+        count = 0
+        with open(output_file, 'w', encoding='utf-8') as f:
+            for row in cursor.fetchall():
+                row_dict = dict(row)
+                
+                # Parse safe alternatives
+                safe_alt_ht = []
+                safe_alt_en = []
+                try:
+                    if row_dict['safe_alternatives_ht']:
+                        safe_alt_ht = json.loads(row_dict['safe_alternatives_ht'])
+                    if row_dict['safe_alternatives_en']:
+                        safe_alt_en = json.loads(row_dict['safe_alternatives_en'])
+                except json.JSONDecodeError:
+                    pass
+                
+                # Export flagging task: input contains harsh term, output flags it
+                # This teaches the model to recognize and flag harsh language
+                entry_flag = {
+                    'id': f"{row_dict['id']}_flag",
+                    'input_text': f"<src:hat_Latn> <tgt:eng_Latn> <domain:general> <task:safety_check> {row_dict['term_creole']}",
+                    'target_text': f"[FLAG:{row_dict['severity'].upper()}:{row_dict['category'].upper()}] {row_dict['term_english'] or 'harsh language'}",
+                    'weight': self.WEIGHT_CONFIG['profanity'],
+                    'tags': ['task:safety', 'profanity', f"severity:{row_dict['severity']}", f"category:{row_dict['category']}"],
+                    'metadata': {
+                        'severity': row_dict['severity'],
+                        'category': row_dict['category'],
+                        'should_block': bool(row_dict['should_block']),
+                        'cultural_note': row_dict['cultural_note']
+                    }
+                }
+                f.write(json.dumps(entry_flag, ensure_ascii=False) + '\n')
+                count += 1
+                
+                # Export replacement task: suggest safe alternative
+                if safe_alt_en and row_dict['term_english']:
+                    entry_replace = {
+                        'id': f"{row_dict['id']}_replace",
+                        'input_text': f"<src:eng_Latn> <tgt:eng_Latn> <domain:general> <task:rephrase_safe> {row_dict['term_english']}",
+                        'target_text': safe_alt_en[0],  # Use first safe alternative
+                        'weight': self.WEIGHT_CONFIG['profanity'],
+                        'tags': ['task:safety', 'profanity', 'replacement'],
+                        'metadata': {
+                            'original_term': row_dict['term_english'],
+                            'alternatives': safe_alt_en,
+                            'severity': row_dict['severity']
+                        }
+                    }
+                    f.write(json.dumps(entry_replace, ensure_ascii=False) + '\n')
+                    count += 1
+        
+        cursor.close()
+        print(f"✅ Exported {count} profanity safety rows to {output_file}")
+        return count
+    
     def close(self):
         """Close database connection"""
         if self.conn:
@@ -405,6 +468,7 @@ def main():
             limit=args.limit
         )
         exporter.export_expressions()
+        exporter.export_profanity()
         exporter.close()
         
         print("\n✅ Export complete!")
