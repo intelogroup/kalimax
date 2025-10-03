@@ -214,7 +214,7 @@ class CorpusIngester:
     def ingest_profanity_csv(self, csv_path: str) -> int:
         """
         Ingest profanity CSV
-        
+
         Expected columns:
         - term_creole, term_english, severity, category,
           safe_alternatives_ht (JSON), safe_alternatives_en (JSON),
@@ -230,8 +230,25 @@ class CorpusIngester:
         with open(csv_file, 'r', encoding='utf-8') as f:
             reader = csv.DictReader(f)
             
+            allowed_categories = {'profanity','slur','sexual','violence','religious','body','illness','other'}
+            severity_map = {'mild':'mild','moderate':'moderate','strong':'severe','severe':'severe','extreme':'extreme'}
+            
             for row in reader:
                 entry_id = f"prof_{uuid.uuid4().hex[:8]}"
+                # Normalize category and severity to match schema constraints
+                category = (row.get('category', 'profanity') or 'profanity').lower()
+                if category not in allowed_categories:
+                    category = 'other'
+                severity_raw = (row.get('severity', 'moderate') or 'moderate').lower()
+                severity = severity_map.get(severity_raw, 'moderate')
+                
+                # Ensure safe alternatives are JSON lists
+                ht_alt = row.get('safe_alternatives_ht', '') or ''
+                en_alt = row.get('safe_alternatives_en', '') or ''
+                if not ht_alt.strip().startswith('['):
+                    ht_alt = json.dumps([s.strip() for s in ht_alt.split(',') if s.strip()])
+                if not en_alt.strip().startswith('['):
+                    en_alt = json.dumps([s.strip() for s in en_alt.split(',') if s.strip()])
                 
                 cursor.execute("""
                     INSERT INTO profanity (
@@ -243,13 +260,13 @@ class CorpusIngester:
                     entry_id,
                     row.get('term_creole', ''),
                     row.get('term_english', ''),
-                    row.get('severity', 'moderate'),
-                    row.get('category', 'profanity'),
-                    row.get('safe_alternatives_ht', '[]'),
-                    row.get('safe_alternatives_en', '[]'),
+                    severity,
+                    category,
+                    ht_alt or '[]',
+                    en_alt or '[]',
                     row.get('cultural_note', ''),
-                    int(row.get('should_flag', '1')),
-                    int(row.get('should_block', '0')),
+                    int(row.get('should_flag', '1') or 1),
+                    int(row.get('should_block', '0') or 0),
                     f"import:{csv_file.name}"
                 ))
                 count += 1
@@ -257,6 +274,191 @@ class CorpusIngester:
         self.conn.commit()
         cursor.close()
         print(f"✅ Imported {count} profanity entries from {csv_file.name}")
+        return count
+
+    def ingest_normalization_csv(self, csv_path: str, dataset_name: str = "seed") -> int:
+        """
+        Ingest normalization rules CSV
+
+        Expected columns:
+        - variant, canonical, english_equivalent, register, notes
+        """
+        csv_file = Path(csv_path)
+        if not csv_file.exists():
+            raise FileNotFoundError(f"CSV not found: {csv_file}")
+        cursor = self.conn.cursor()
+        count = 0
+        with open(csv_file, 'r', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                entry_id = f"norm_{uuid.uuid4().hex[:8]}"
+                cursor.execute("""
+                    INSERT OR IGNORE INTO normalization_rules (
+                        id, variant, canonical, english_equivalent, register, provenance
+                    ) VALUES (?, ?, ?, ?, ?, ?)
+                """, (
+                    entry_id,
+                    row.get('variant', ''),
+                    row.get('canonical', ''),
+                    row.get('english_equivalent', ''),
+                    row.get('register', 'general'),
+                    f"{dataset_name}:{csv_file.name}"
+                ))
+                count += 1
+        self.conn.commit()
+        cursor.close()
+        print(f"✅ Imported {count} normalization rules from {csv_file.name}")
+        return count
+
+    def ingest_challenge_csv(self, csv_path: str, dataset_name: str = "seed") -> int:
+        """
+        Ingest challenge set CSV.
+
+        Expected columns (from generator):
+        - id, category, src_en, src_ht, phenomenon, expected_behavior, notes
+        Mapped to schema:
+        - src_text=src_en, src_lang=eng_Latn, tgt_text=src_ht, tgt_lang=hat_Latn,
+          challenge_type=category, expected_behavior, evaluation_notes=notes,
+          provenance, never_for_training=1
+        """
+        csv_file = Path(csv_path)
+        if not csv_file.exists():
+            raise FileNotFoundError(f"CSV not found: {csv_file}")
+        cursor = self.conn.cursor()
+        count = 0
+        with open(csv_file, 'r', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            cat_map = {
+                'idiom': 'idioms',
+                'dosage': 'high_risk',
+                'negation': 'cultural',
+                'ambiguity': 'cultural',
+                'numbers': 'cultural',
+                'polysemy': 'cultural',
+            }
+            for row in reader:
+                entry_id = f"chal_{uuid.uuid4().hex[:8]}"
+                raw_cat = (row.get('category', 'cultural') or 'cultural').lower()
+                challenge_type = cat_map.get(raw_cat, 'cultural')
+                cursor.execute("""
+                    INSERT INTO challenge (
+                        id, src_text, src_lang, tgt_text, tgt_lang, challenge_type,
+                        domain, difficulty, expected_behavior, evaluation_notes,
+                        provenance, never_for_training
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    entry_id,
+                    row.get('src_en', ''),
+                    'eng_Latn',
+                    row.get('src_ht', ''),
+                    'hat_Latn',
+                    challenge_type,
+                    None,
+                    'medium',
+                    row.get('expected_behavior', ''),
+                    row.get('notes', ''),
+                    f"{dataset_name}:{csv_file.name}",
+                    1
+                ))
+                count += 1
+        self.conn.commit()
+        cursor.close()
+        print(f"✅ Imported {count} challenge items from {csv_file.name}")
+        return count
+
+    def ingest_monolingual_ht_csv(self, csv_path: str, dataset_name: str = "seed") -> int:
+        """
+        Ingest monolingual Haitian Creole CSV.
+
+        Expected columns: id, text, domain, topic, complexity
+        """
+        csv_file = Path(csv_path)
+        if not csv_file.exists():
+            raise FileNotFoundError(f"CSV not found: {csv_file}")
+        cursor = self.conn.cursor()
+        count = 0
+        with open(csv_file, 'r', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                entry_id = f"mht_{uuid.uuid4().hex[:8]}"
+                cursor.execute("""
+                    INSERT INTO monolingual_ht (
+                        id, text, domain, provenance, dataset_name
+                    ) VALUES (?, ?, ?, ?, ?)
+                """, (
+                    entry_id,
+                    row.get('text', ''),
+                    row.get('domain', None),
+                    f"{dataset_name}:{csv_file.name}",
+                    dataset_name
+                ))
+                count += 1
+        self.conn.commit()
+        cursor.close()
+        print(f"✅ Imported {count} monolingual HT rows from {csv_file.name}")
+        return count
+
+    def ingest_haitian_patterns_csv(self, csv_path: str, dataset_name: str = "seed") -> int:
+        """
+        Ingest Haitian Creole language patterns CSV.
+
+        Expected columns: pattern_type, haitian_example, english_gloss, 
+                         grammatical_description, linguistic_notes, frequency, difficulty, domain
+        """
+        csv_file = Path(csv_path)
+        if not csv_file.exists():
+            raise FileNotFoundError(f"CSV not found: {csv_file}")
+        cursor = self.conn.cursor()
+        count = 0
+        
+        allowed_patterns = {'grammar','syntax','phonology','morphology','tense','aspect',
+                           'verb_conjugation','noun_phrase','question_formation','negation',
+                           'serial_verbs','creole_features'}
+        allowed_freq = {'very_common','common','uncommon','rare'}
+        allowed_diff = {'basic','intermediate','advanced'}
+        
+        with open(csv_file, 'r', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                entry_id = f"htp_{uuid.uuid4().hex[:8]}"
+                
+                # Validate pattern_type
+                pattern_type = (row.get('pattern_type', 'grammar') or 'grammar').lower()
+                if pattern_type not in allowed_patterns:
+                    pattern_type = 'grammar'
+                
+                # Validate frequency and difficulty
+                freq = (row.get('frequency', 'common') or 'common').lower()
+                if freq not in allowed_freq:
+                    freq = 'common'
+                    
+                diff = (row.get('difficulty', 'basic') or 'basic').lower()
+                if diff not in allowed_diff:
+                    diff = 'basic'
+                
+                cursor.execute("""
+                    INSERT INTO haitian_creole_patterns (
+                        id, pattern_type, haitian_example, english_gloss, 
+                        grammatical_description, linguistic_notes, frequency, 
+                        difficulty, domain, provenance, dataset_name
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    entry_id,
+                    pattern_type,
+                    row.get('haitian_example', ''),
+                    row.get('english_gloss', ''),
+                    row.get('grammatical_description', ''),
+                    row.get('linguistic_notes', ''),
+                    freq,
+                    diff,
+                    row.get('domain', None),
+                    f"{dataset_name}:{csv_file.name}",
+                    dataset_name
+                ))
+                count += 1
+        self.conn.commit()
+        cursor.close()
+        print(f"✅ Imported {count} Haitian Creole pattern rows from {csv_file.name}")
         return count
     
     def close(self):
@@ -271,7 +473,7 @@ def main():
     
     parser = argparse.ArgumentParser(description="Ingest CSV data into Kalimax corpus")
     parser.add_argument('csv_file', help='CSV file to ingest')
-    parser.add_argument('--type', choices=['glossary', 'corpus', 'expressions', 'profanity'],
+    parser.add_argument('--type', choices=['glossary', 'corpus', 'expressions', 'profanity', 'normalization', 'challenge', 'mono_ht', 'ht_patterns'],
                        required=True, help='Type of data')
     parser.add_argument('--dataset', default='seed', help='Dataset name (default: seed)')
     parser.add_argument('--version', default='1.0', help='Dataset version (default: 1.0)')
@@ -289,6 +491,14 @@ def main():
             count = ingester.ingest_expressions_csv(args.csv_file)
         elif args.type == 'profanity':
             count = ingester.ingest_profanity_csv(args.csv_file)
+        elif args.type == 'normalization':
+            count = ingester.ingest_normalization_csv(args.csv_file, args.dataset)
+        elif args.type == 'challenge':
+            count = ingester.ingest_challenge_csv(args.csv_file, args.dataset)
+        elif args.type == 'mono_ht':
+            count = ingester.ingest_monolingual_ht_csv(args.csv_file, args.dataset)
+        elif args.type == 'ht_patterns':
+            count = ingester.ingest_haitian_patterns_csv(args.csv_file, args.dataset)
         
         ingester.close()
         

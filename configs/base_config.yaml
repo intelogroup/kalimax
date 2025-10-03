@@ -1,11 +1,11 @@
 # Kalimax Base Configuration
 
-# Model settings
+# Model Configuration
 model:
-  name: "facebook/nllb-200-distilled-600M"
+  name: "google/mt5-large"  # Using large model for better translation quality
   cache_dir: "./models/cache"
   device: "auto"  # auto, cpu, cuda
-  max_memory_gb: 16
+  torch_dtype: "auto"  # auto, float16, float32
 
 # LoRA settings
 lora:
@@ -37,10 +37,10 @@ data:
   test_size: 0.1
   val_size: 0.1
 
-# Language codes (NLLB format)
+# Language codes (ISO format for mT5)
 languages:
-  english: "eng_Latn"
-  haitian_creole: "hat_Latn"
+  english: "en"
+  haitian_creole: "ht"
 
 # Evaluation settings
 evaluation:

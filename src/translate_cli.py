@@ -3,8 +3,8 @@
 Command-line interface for Kalimax translation
 
 Usage:
-    python -m src.translate_cli "Hello, how are you?" --tgt hat_Latn
-    python -m src.translate_cli "Bonjou" --src hat_Latn --tgt eng_Latn
+    python -m src.translate_cli "Hello, how are you?" --tgt ht
+python -m src.translate_cli "Bonjou" --src ht --tgt en
 """
 
 import argparse
@@ -27,7 +27,7 @@ Examples:
   python -m src.translate_cli "The patient needs medical attention"
   
   # Haitian Creole to English
-  python -m src.translate_cli "Malad la bezwen èd medikal" --src hat_Latn --tgt eng_Latn
+  python -m src.translate_cli "Malad la bezwen èd medikal" --src ht --tgt en
   
   # Specify audience
   python -m src.translate_cli "Take this medication" --audience patient
@@ -46,15 +46,15 @@ Examples:
     parser.add_argument(
         '--src', '--source',
         dest='source_lang',
-        default='eng_Latn',
-        help='Source language code (NLLB format, default: eng_Latn)'
+        default='en',
+        help='Source language code (ISO format, default: en)'
     )
     
     parser.add_argument(
         '--tgt', '--target',
         dest='target_lang',
-        default='hat_Latn',
-        help='Target language code (NLLB format, default: hat_Latn)'
+        default='ht',
+        help='Target language code (ISO format, default: ht)'
     )
     
     parser.add_argument(

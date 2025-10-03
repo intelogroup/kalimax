@@ -59,8 +59,8 @@ class TrainingExporter:
     def _build_input_text(
         self,
         src_text: str,
-        src_lang: str = 'eng_Latn',
-        tgt_lang: str = 'hat_Latn',
+        src_lang: str = 'en',
+        tgt_lang: str = 'ht',
         domain: str = 'general',
         audience: str = 'patient',
         mode: Optional[str] = None

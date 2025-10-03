@@ -43,9 +43,17 @@ class TextNormalizer:
             # Contractions (applied carefully to avoid mid-word matches)
             "m'gen": "mwen gen",
             "mgen": "mwen gen",
-            
+
             # Spelling variants
             "femal": "fè mal",
+
+            # Code-switching patterns (English injections in Creole)
+            "deal": "fè kontra",
+            "check": "tcheke",
+            "fix": "ranje",
+            "grab": "pran",
+            "hold": "kenbe",
+            "pick": "chwazi",
         }
     
     def _load_normalization_rules(self):

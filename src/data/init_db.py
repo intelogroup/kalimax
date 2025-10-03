@@ -104,7 +104,7 @@ def get_db_stats(db_path: str = "data/kalimax_corpus.db"):
     # Count rows in each main table
     tables = ['corpus', 'glossary', 'expressions', 'high_risk', 
               'normalization_rules', 'profanity', 'corrections', 
-              'challenge', 'monolingual_ht', 'monolingual_en']
+              'challenge', 'monolingual_ht', 'haitian_creole_patterns']
     
     for table in tables:
         cursor.execute(f"SELECT COUNT(*) FROM {table}")

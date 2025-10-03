@@ -144,6 +144,8 @@ models/*/
 # Large datasets
 data/raw/
 data/processed/large_*
+data/seed/
+data/seed_backup/
 *.csv
 *.tsv
 *.jsonl

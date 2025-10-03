@@ -112,7 +112,8 @@ def test_basic_translation():
         
         outputs = model.generate(
             inputs.input_ids,
-            forced_bos_token_id=tokenizer.lang_code_to_id["hat_Latn"],
+            # mT5 doesn't use forced_bos_token_id like NLLB
+                # The model handles language prefixes in the input text
             max_length=50
         )
         
